@@ -1,0 +1,112 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>
+:root{--bg:#000;--card:#07090a;--ink:#dbe7ea;--mut:#7f979d;--line:#1f2f34;--good:#3fb8af;--bad:#ff4d6a;--gold:#e8c547;--cell:#10181b;color-scheme:dark}
+:root.light{--bg:#eef3f4;--card:white;--ink:#12262c;--mut:#5b7078;--line:#cfdadd;--cell:#dfe8ea;color-scheme:light}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 system-ui,sans-serif}.wrap{max-width:1200px;margin:auto;padding:6px 4px 24px}h2{font:600 20px Georgia,serif;margin:0 0 8px}button,select{font:inherit;color:var(--ink);background:var(--cell);border:1px solid var(--line);border-radius:8px;padding:7px 12px;cursor:pointer}button.main{background:var(--good);color:#001b19;font-weight:700}.bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px;border:1px solid var(--line);background:var(--card);border-radius:10px}.clock{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--gold)}.box{padding:16px;background:var(--card);border:1px solid var(--line);border-radius:10px;margin-top:14px}.sub,.leg{color:var(--mut);font-size:12px}.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:14px}.kpi{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px}.kpi b{display:block;font-size:28px;font-weight:600}.kpi span{color:var(--mut);font-size:12px}.good{color:var(--good)}.bad{color:var(--bad)}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.grid .box{min-width:0}canvas{width:100%;display:block}input[type=range]{width:100%;accent-color:var(--good)}table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}td,th{padding:7px;border-bottom:1px solid var(--line);text-align:right}td:first-child,th:first-child{text-align:left}th{color:var(--mut);font-weight:500}.scroll{overflow-x:auto}@media(max-width:650px){.grid{grid-template-columns:1fr}.kpis{grid-template-columns:1fr 1fr}.clock{margin-left:0}}
+</style></head><body><div class="wrap">
+<div class="bar"><button class="main" id="play">Reproduzir</button><button id="reset">Voltar ao início</button><label>Velocidade <select id="speed"><option value="5">5×</option><option value="20" selected>20×</option><option value="60">60×</option></select></label><button id="theme">Alternar tema</button><span class="clock" id="clock"></span></div>
+<div class="box" style="margin-top:10px;padding:10px 16px"><label class="sub" for="seek">Tempo simulado · arraste para inspecionar o processo</label><input id="seek" type="range" min="0" step="0.1" value="0"></div>
+<div class="kpis"><div class="kpi"><span>PEÇAS INICIADAS</span><b id="started">0</b></div><div class="kpi"><span>CONCLUÍDAS</span><b id="finished" class="good">0</b></div><div class="kpi"><span>RETIDAS / REPROVADAS</span><b id="rejected" class="bad">0</b></div><div class="kpi"><span>EM PROCESSO</span><b id="wip">0</b></div></div>
+<div class="box"><h2><span class="good">●</span> Linha SMT e montagem de celulares</h2><div class="sub">Postos em sequência · retidas no SPI e AOI seguem para análise externa</div><canvas id="line"></canvas><div class="leg">■ Verde: peça / disponível &nbsp; ■ Amarelo: em operação &nbsp; ■ Rosa: reprovação &nbsp; Pequenos blocos abaixo dos postos: peças na fila</div></div>
+<div class="grid">
+<div class="box"><h2>RTY do processo (%)</h2><canvas id="rty" aria-label="RTY do processo"></canvas><p class="leg">Produto dos rendimentos de primeira passagem no SPI, AOI e teste ativos. Com peças em processo, as amostras dos postos podem diferir.</p><h2 style="margin-top:18px">FPY no teste funcional (%)</h2><canvas id="quality" aria-label="FPY no teste funcional"></canvas><h2 style="margin-top:18px">Produção acumulada</h2><canvas id="production" aria-label="Produção acumulada"></canvas></div>
+<div class="box"><h2>WIP nas filas entre estações</h2><canvas id="buffers" aria-label="WIP nas filas"></canvas><p class="leg">Somente placas aguardando. O cartão Em processo também inclui as placas em operação.</p><h2 style="margin-top:18px">Falhas detectadas por posto</h2><canvas id="failures" aria-label="Falhas detectadas por posto"></canvas><h2 style="margin-top:18px">Custo da não qualidade estimado (R$)</h2><canvas id="cost" aria-label="Custo da não qualidade"></canvas><p class="leg" id="cost-note"></p></div>
+</div>
+<div class="grid"><div class="box"><h2>Radar dos indicadores (%)</h2><canvas id="radar" aria-label="Radar dos indicadores"></canvas><p class="leg">OEE do Teste Funcional Final = aprovadas no teste × ciclo ideal de referência ÷ tempo programado transcorrido. A embalagem não entra nesta conta. Radar limitado a 0–100%.</p><p class="leg">O modelo não registra paradas: disponibilidade assumida em 100%. O ciclo nominal de 26 s é usado como referência ideal. 1 − COPQ = 1 − custo estimado ÷ valor de referência das placas iniciadas. Eixos sem amostra aparecem como —.</p></div><div class="box"><h2>Indicadores do processo</h2><table id="metrics"></table><p class="leg">Acumulados até o instante selecionado. FPY e RTY aparecem após haver inspeções suficientes.</p></div></div>
+<div class="box"><h2>Estado das estações</h2><div class="scroll"><table><thead><tr><th>Estação</th><th>Estado</th><th>Fila</th><th>Processadas</th><th>Ocupação</th></tr></thead><tbody id="stations"></tbody></table></div></div>
+<p class="leg">Dados da execução SimPy selecionada. Reprodução do histórico registrado; os controles de tempo não alteram a simulação. SPI inspeciona pasta; AOI inspeciona defeitos visuais após o forno. Retidas não retornam à linha nesta versão.</p>
+</div><script>
+const DATA=__PAYLOAD__;
+__METRICS_JS__
+const $=id=>document.getElementById(id);const color=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const MC={body:'#d6dbde',mid:'#aab2b8',dark:'#454b52',red:'#c4262d',scr:'#16222b',glow:'#5fd0e0',blk:'#1f2327'};
+function drawM(x,k,px,py,w,h,st){
+ const X=f=>px+w*f,Y=f=>py+h*f,W=f=>w*f,H=f=>h*f;
+ const R=(a,b,c,d,f)=>{x.fillStyle=f;x.fillRect(X(a),Y(b),W(c),H(d))};
+ const C=(a,b,r,f)=>{x.fillStyle=f;x.beginPath();x.arc(X(a),Y(b),r,0,6.283);x.fill()};
+ const lamp={r:'#ff4d6a',y:'#f2c230',g:'#3ddc84'}[st];
+ const tw=f=>{R(f,.04,.03,.14,MC.dark);R(f-.05,0,.1,.07,lamp)};
+ R(.04,.94,.92,.06,MC.dark);
+ if(k==='imp'){R(.06,.22,.88,.72,MC.dark);R(.06,.22,.16,.72,MC.body);R(.06,.54,.88,.05,MC.red);R(.3,.3,.4,.18,MC.mid);R(.62,.66,.26,.2,MC.scr);R(.65,.7,.2,.1,MC.glow);tw(.5)}
+ else if(k==='spi'){R(.06,.22,.88,.72,MC.mid);R(.06,.22,.88,.1,MC.dark);R(.06,.54,.88,.05,MC.red);R(.14,.64,.34,.24,MC.dark);R(.56,.62,.3,.22,MC.scr);R(.6,.67,.22,.12,MC.glow);tw(.5)}
+ else if(k==='pp'){R(.06,.18,.88,.5,MC.body);R(.06,.18,.88,.14,MC.dark);R(.14,.36,.72,.16,MC.scr);R(.06,.54,.88,.05,MC.red);R(.1,.66,.8,.28,MC.blk);
+  const cs=['#e6b422','#3a86d6','#d8dde0','#3ddc84'],r=Math.min(W(.07),H(.1));
+  for(let i=0;i<4;i++)C(.22+i*.19,.8,r,cs[i]);tw(.5)}
+ else if(k==='oven'){R(.02,.4,.96,.54,MC.body);
+  for(let i=0;i<3;i++){x.fillStyle=MC.mid;x.beginPath();x.ellipse(X(.18+i*.32),Y(.4),W(.15),H(.14),0,Math.PI,0);x.fill()}
+  x.strokeStyle=MC.mid;x.lineWidth=1;
+  for(let i=1;i<6;i++){x.beginPath();x.moveTo(X(i/6),Y(.4));x.lineTo(X(i/6),Y(.94));x.stroke()}
+  R(.46,.04,.08,.2,MC.dark);R(.34,0,.32,.14,MC.scr);R(.37,.03,.26,.08,MC.glow);R(.04,.66,.92,.04,MC.red)}
+ else if(k==='aoi'){R(.06,.2,.88,.74,MC.body);R(.06,.2,.88,.22,MC.dark);C(.5,.31,Math.min(W(.07),H(.07)),MC.glow);R(.06,.54,.88,.05,MC.red);R(.14,.64,.5,.26,MC.mid);R(.68,.62,.2,.22,MC.scr);R(.7,.66,.16,.1,MC.glow);tw(.2)}
+ else{R(.08,.5,.84,.08,MC.dark);R(.1,.58,.04,.36,MC.dark);R(.86,.58,.04,.36,MC.dark);
+  for(let i=0;i<7;i++)R(.12+i*.11,.46,.06,.04,MC.mid);
+  x.strokeStyle=MC.dark;x.lineWidth=2;C(.72,.28,Math.min(W(.2),H(.22)),MC.body);x.stroke();x.lineWidth=1;
+  R(.2,.2,.3,.22,MC.body);R(.22,.24,.2,.1,MC.scr)}
+}
+const PH={frame:'#2b3138',pcb:'#2f9e6a',disp:'#101820',batt:'#5b9bd5',gold:'#e6b422',cover:'#8d99ae'};
+const SN=[['Gravação de FW','FW'],['PCBA no chassi','Chassi'],['Display','Display'],['Bateria','Bateria'],['Alto-falante','Speaker'],['Microfone','Micro'],['Câmera traseira','Câm.T'],['Câmera frontal','Câm.F'],['Botões e vibra','Botões'],['Tampa traseira','Tampa'],['Teste funcional','Teste'],['Embalagem','Embal.']];
+function drawS(x,k,px,py,w,h,o){
+ const X=f=>px+w*f,Y=f=>py+h*f,W=f=>w*f,H=f=>h*f;
+ const R=(a,b,c,d,f)=>{x.fillStyle=f;x.fillRect(X(a),Y(b),W(c),H(d))};
+ const C=(a,b,r,f)=>{x.fillStyle=f;x.beginPath();x.arc(X(a),Y(b),r,0,6.283);x.fill()};
+ const AR=(a,b)=>{x.fillStyle=PH.gold;x.beginPath();x.moveTo(X(a),Y(b+.1));x.lineTo(X(a-.06),Y(b));x.lineTo(X(a+.06),Y(b));x.fill()};
+ const r1=Math.min(W(.1),H(.1)),r2=Math.min(W(.05),H(.05));
+ const fr=()=>R(.3,.08,.4,.78,PH.frame);
+ R(0,.92,1,.08,MC.mid);
+ if(k===0){const pg=o.b?Math.max(0,Math.min(1,1-o.rem/o.m)):0;
+  R(.06,.3,.34,.4,PH.pcb);R(.12,.38,.1,.1,'#222');R(.26,.52,.08,.1,'#222');R(.4,.48,.2,.03,MC.dark);
+  R(.6,.24,.34,.5,MC.dark);R(.63,.28,.28,.22,MC.scr);R(.63,.6,.28,.07,'#3a424b');R(.63,.6,.28*pg,.07,MC.glow)}
+ else if(k===1){fr();R(.35,.16,.3,.56,PH.pcb);R(.4,.22,.1,.1,'#222');R(.52,.42,.08,.1,'#222');[[.36,.17],[.62,.17],[.36,.68],[.62,.68]].forEach(p=>C(p[0],p[1],r2,PH.gold));AR(.84,.2)}
+ else if(k===2){fr();R(.33,.12,.34,.56,PH.disp);R(.36,.15,.28,.04,MC.glow);R(.45,.68,.1,.12,PH.gold);AR(.84,.2)}
+ else if(k===3){fr();R(.35,.16,.3,.52,PH.batt);R(.47,.2,.06,.1,'#fff');R(.4,.5,.2,.03,'#fff');AR(.84,.2)}
+ else if(k===4){fr();C(.5,.66,r1*1.2,PH.gold);C(.5,.66,r1*.7,MC.dark);R(.4,.2,.2,.02,MC.mid);AR(.84,.4)}
+ else if(k===5){fr();C(.4,.78,r2*1.4,PH.gold);C(.4,.78,r2*.6,MC.dark);R(.45,.2,.1,.02,MC.mid);AR(.84,.5)}
+ else if(k===6){fr();R(.34,.12,.32,.22,MC.dark);C(.43,.23,r1*.8,'#0b0f14');C(.57,.23,r1*.8,'#0b0f14');C(.43,.23,r1*.35,PH.gold);C(.57,.23,r1*.35,PH.gold);AR(.84,.1)}
+ else if(k===7){fr();R(.33,.12,.34,.66,PH.disp);C(.5,.17,r1*.6,'#0b0f14');C(.5,.17,r1*.25,PH.gold);R(.4,.17,.06,.012,MC.mid);AR(.84,.1)}
+ else if(k===8){fr();R(.7,.22,.05,.14,PH.gold);R(.7,.42,.05,.14,PH.gold);C(.46,.34,r1*.7,MC.mid);C(.46,.34,r2*.5,MC.dark);AR(.86,.05)}
+ else if(k===9){R(.28,.02,.44,.3,PH.cover);AR(.5,.34);R(.3,.48,.4,.42,PH.frame);R(.34,.52,.32,.3,PH.pcb)}
+ else if(k===10){const bad=o.b&&o.b.d;fr();R(.33,.12,.34,.62,PH.disp);
+  x.strokeStyle=bad?'#ff4d6a':'#3ddc84';x.lineWidth=2;x.beginPath();
+  if(bad){x.moveTo(X(.4),Y(.3));x.lineTo(X(.6),Y(.55));x.moveTo(X(.6),Y(.3));x.lineTo(X(.4),Y(.55))}
+  else{x.moveTo(X(.4),Y(.42));x.lineTo(X(.48),Y(.55));x.lineTo(X(.62),Y(.28))}
+  x.stroke();x.lineWidth=1;R(.14,.34,.16,.03,PH.gold);R(.7,.52,.16,.03,PH.gold)}
+ else{R(.4,.1,.2,.3,PH.frame);R(.14,.36,.72,.5,'#c89b6d');R(.1,.28,.8,.12,'#b5855a');R(.2,.56,.24,.12,'#fff')}
+}
+function drawProd(x,px,py,w,h,on){
+ const X=f=>px+w*f,Y=f=>py+h*f,W=f=>w*f,H=f=>h*f;
+ const R=(a,b,c,d,f)=>{x.fillStyle=f;x.fillRect(X(a),Y(b),W(c),H(d))};
+ R(0,.92,1,.08,MC.mid);R(.52,.5,.4,.42,'#c89b6d');R(.5,.44,.44,.1,'#b5855a');R(.58,.64,.2,.1,'#fff');
+ R(.14,.06,.36,.8,PH.frame);R(.17,.1,.3,.7,PH.disp);R(.2,.14,.24,.04,MC.glow);
+ for(let i=0;i<6;i++)R(.2+(i%3)*.08,.26+Math.floor(i/3)*.1,.06,.07,PH.gold);
+ if(on){x.strokeStyle='#3ddc84';x.lineWidth=2;x.beginPath();x.moveTo(X(.6),Y(.2));x.lineTo(X(.67),Y(.3));x.lineTo(X(.82),Y(.1));x.stroke();x.lineWidth=1}
+}
+
+let now=DATA.live?DATA.end:0,playing=false,last=0;const events=DATA.events,names=DATA.stations,durations=DATA.durations;
+$('seek').max=DATA.end;$('seek').disabled=DATA.live;$('play').disabled=DATA.live;$('reset').disabled=DATA.live;
+if(DATA.live)$('play').textContent='Acompanhando ao vivo';
+function snapshot(t){const latest=new Map(),state=names.map(()=>({busy:null,busies:[],queue:[],done:0,busyTime:0,reject:false}));let good=0,bad=0;const starts=new Map(),entries=new Map();
+for(const e of events){if(e.t>t)break;latest.set(e.p,e);const i=names.indexOf(e.s);if(i<0)continue;const s=state[i];if(!starts.has(e.p))starts.set(e.p,e.t);if(e.e==='entrada')entries.set(e.p+'|'+i,e.t);if(e.e==='saida'){s.done++;s.busyTime+=e.t-(entries.get(e.p+'|'+i)??e.t);if(e.r==='reprovada'){bad++;if(t-e.t<8)s.reject=true;}if(e.s==='Embalagem')good++;}}
+for(const e of latest.values()){const i=names.indexOf(e.s);if(i<0)continue;if(e.e==='fila')state[i].queue.push(e.p);if(e.e==='entrada'){state[i].busies.push(e);state[i].busy=e;state[i].busyTime+=t-e.t;}}
+let lead=0;for(const e of events){if(e.t>t)break;if(e.e==='saida'&&e.s==='Embalagem')lead+=e.t-starts.get(e.p);}
+return {state,good,bad,total:starts.size,wip:starts.size-good-bad,lead:good?lead/good:0};}
+function setup(id,h){const cv=$(id),w=cv.clientWidth,d=devicePixelRatio||1;cv.style.height=h+'px';cv.width=Math.round(w*d);cv.height=Math.round(h*d);const x=cv.getContext('2d');x.scale(d,d);return {x,w,h};}
+function drawLine(s){
+const cv=$('line'),narrow=cv.clientWidth<650;
+const groups=[{title:'SMT · impressão, inspeção, colocação e refusão',ids:names.map((n,i)=>DATA.manual.includes(n)?-1:i).filter(i=>i>=0),cols:narrow?3:5},{title:'Montagem manual · 12 estações em sequência',ids:names.map((n,i)=>DATA.manual.includes(n)?i:-1).filter(i=>i>=0),cols:narrow?3:6}].filter(g=>g.ids.length);
+const H=groups.reduce((h,g)=>h+38+Math.ceil(g.ids.length/g.cols)*153,0),{x,w}=setup('line',H);let base=0;
+for(const group of groups){x.fillStyle=color('--mut');x.font='12px system-ui';x.textAlign='left';x.fillText(group.title,0,base+18);base+=38;const gap=12,cw=(w-gap*(group.cols-1))/group.cols;
+for(let pos=0;pos<group.ids.length;pos++){const i=group.ids[pos],a=s.state[i],px=(pos%group.cols)*(cw+gap),py=base+Math.floor(pos/group.cols)*153,sw=cw-10; x.fillStyle=color('--cell');x.fillRect(px,py,cw,87);x.strokeStyle=a.reject?color('--bad'):a.busy?color('--gold'):color('--line');x.lineWidth=1.5;x.strokeRect(px+.5,py+.5,cw-1,86);
+const n=names[i],manual=DATA.manual.indexOf(n);if(manual<0){let kind=n==='SPI'?'spi':n==='AOI'?'aoi':n.startsWith('Pick')?'pp':n.startsWith('Forno')?'oven':n==='Saída SMT'?'out':'imp';drawM(x,kind,px+10,py+9,sw-10,66,a.reject?'r':a.busy?'y':'g');}else drawS(x,manual,px+12,py+10,sw-14,64,{b:a.busy?{d:a.reject}:null,m:durations[i],rem:a.busy?Math.max(0,durations[i]-(now-a.busy.t)):0});
+x.font='10px system-ui';x.textAlign='left';x.fillStyle=color('--mut');x.fillText(String(i+1).padStart(2,'0'),px+5,py+12);x.textAlign='center';x.fillStyle=color('--ink');x.font='11px system-ui';x.fillText(n,px+cw/2,py+103,cw);x.fillStyle=color('--mut');x.font='10px system-ui';x.fillText(DATA.capacities[i]>1?a.busies.length+'/'+DATA.capacities[i]+' posições ocupadas':a.busy?a.busy.p:'Livre',px+cw/2,py+118);
+for(let j=0;j<Math.min(a.queue.length,6);j++){x.fillStyle=color('--good');x.fillRect(px+5+j*9,py+126,6,6);}if(a.queue.length>6){x.fillStyle=color('--mut');x.fillText('+'+(a.queue.length-6),px+cw-14,py+132);}
+if(pos<group.ids.length-1&&pos%group.cols!==group.cols-1){x.fillStyle=color('--mut');x.fillText('→',px+cw+gap/2,py+50);}
+}base+=Math.ceil(group.ids.length/group.cols)*153;
+}}
+
+const metricsEngine=buildMetrics(events,names,DATA.costs,DATA.functional_test_cycle),series=metricsEngine.series;
+const format=(v,d=1)=>v===null||v===undefined?'—':Number(v).toLocaleString('pt-BR',{minimumFractionDigits:d,maximumFractionDigits:d});
+function chart(id,key,maxFixed){const {x,w,h}=setup(id,170),L=58,R=14,T=14,B=23,pw=w-L-R,ph=h-T-B;let max=maxFixed||1;for(const p of series){if(p.t>now)break;if(p[key]!==null)max=Math.max(max,p[key]);}x.font='10px system-ui';x.strokeStyle=color('--line');x.fillStyle=color('--mut');x.textAlign='right';for(let k=0;k<=2;k++){let y=T+ph*(1-k/2);x.beginPath();x.moveTo(L,y);x.lineTo(w-R,y);x.stroke();x.fillText(format(max*k/2,maxFixed?0:1),L-6,y+3);}x.textAlign='left';x.fillText('0 h',L,h-5);x.textAlign='right';x.fillText(format(DATA.end/3600,2)+' h',w-R,h-5);x.strokeStyle=color('--good');x.lineWidth=2;x.beginPath();let on=false,lastPoint=null;for(const p of series){if(p.t>now)break;if(p[key]===null){on=false;continue;}let px=L+pw*p.t/Math.max(1,DATA.end),py=T+ph*(1-p[key]/max);if(on){x.lineTo(px,lastPoint[1]);x.lineTo(px,py);}else{x.moveTo(px,py);on=true;}lastPoint=[px,py];}if(lastPoint)x.lineTo(L+pw*now/Math.max(1,DATA.end),lastPoint[1]);x.stroke();if(!lastPoint){x.fillStyle=color('--mut');x.textAlign='center';x.fillText('Aguardando avaliações',L+pw/2,T+ph/2);}}
+function bars(m){const {x,w,h}=setup('failures',190),labels=['SPI','AOI','Teste funcional'],values=labels.map(n=>m.rejects[n]||0),max=Math.max(1,...values),L=30,T=22,B=32,pw=w-L-10,ph=h-T-B;x.font='11px system-ui';x.textAlign='center';labels.forEach((n,i)=>{const bw=pw/5,px=L+(i+.5)*pw/3-bw/2,bh=ph*values[i]/max;x.fillStyle=color('--bad');x.fillRect(px,T+ph-bh,bw,bh);x.fillStyle=color('--mut');x.fillText(names.includes(n)?values[i]:'Desativado',px+bw/2,T+ph-bh-7);x.fillText(n,px+bw/2,h-10);});}
+function radar(m){const {x,w,h}=setup('radar',300),cx=w/2,cy=h/2,R=Math.max(35,Math.min(w/2-100,h/2-35)),values=[m.q,m.r,m.oee,m.costScore],labels=['FPY','RTY','OEE T. Funcional Final','1 − COPQ'],angles=[-Math.PI/2,0,Math.PI/2,Math.PI];x.strokeStyle=color('--line');x.font='10px system-ui';x.fillStyle=color('--mut');for(const f of [.25,.5,.75,1]){x.beginPath();x.arc(cx,cy,R*f,0,Math.PI*2);x.stroke();x.fillText(f*100+'%',cx+4,cy-R*f+10);}const point=(i,r)=>[cx+Math.cos(angles[i])*r,cy+Math.sin(angles[i])*r];for(let i=0;i<4;i++){const [a,b]=point(i,R);x.beginPath();x.moveTo(cx,cy);x.lineTo(a,b);x.stroke();const [tx,ty]=point(i,R+20);x.textAlign=i===1?'left':i===3?'right':'center';x.fillStyle=color('--ink');x.fillText(labels[i],tx,ty);x.fillStyle=color('--good');x.fillText(format(values[i])+(values[i]===null?'':'%'),tx,ty+14);}if(values.every(v=>v!==null)){x.beginPath();values.forEach((v,i)=>{const[a,b]=point(i,R*Math.max(0,Math.min(100,v))/100);i?x.lineTo(a,b):x.moveTo(a,b);});x.closePath();x.fillStyle=color('--good');x.globalAlpha=.15;x.fill();x.globalAlpha=1;x.strokeStyle=color('--good');x.lineWidth=2;x.stroke();}else{x.textAlign='center';x.fillStyle=color('--mut');x.fillText('Aguardando avaliações',cx,cy+5);}}
+function paint(){const s=snapshot(now),m=metricsEngine.at(now);$('seek').value=now;$('clock').textContent=(DATA.live?'AO VIVO · ':'HISTÓRICO · ')+Math.floor(now/3600)+' h '+String(Math.floor(now/60)%60).padStart(2,'0')+' min';$('started').textContent=m.total;$('finished').textContent=m.p;$('rejected').textContent=m.bad;$('wip').textContent=DATA.complete?m.w:'—';drawLine(s);chart('production','p');chart('buffers','b');chart('quality','q',100);chart('rty','r',100);chart('cost','c');bars(m);radar(m);$('cost-note').textContent='Hipóteses por ocorrência: SPI R$ '+format(DATA.costs.SPI,2)+' · AOI R$ '+format(DATA.costs.AOI,2)+' · teste R$ '+format(DATA.costs['Teste funcional'],2)+'.';const metrics=[['Tempo simulado',format(now/3600,2)+' h'],['Vazão de concluídas',now?format(m.p*3600/now)+' peças/h':'—'],['Lead time médio das concluídas',DATA.complete&&m.p?format(m.lead/60,2)+' min':'—'],['FPY no teste funcional',m.q===null?'—':format(m.q)+'%'],['RTY estimado',m.r===null?'—':format(m.r)+'%'],['WIP médio nas filas',DATA.complete?format(m.queueMean,2):'—'],['WIP máximo nas filas',DATA.complete?m.queueMax:'—'],['Custo da não qualidade estimado','R$ '+format(m.c,2)],['Total testadas no TFF',m.testTotal],['Aprovadas no TFF',m.testGood],['Reprovadas no TFF',m.testRejected],['Tempo programado TFF (min)',format(m.oeePlannedSeconds===null?null:m.oeePlannedSeconds/60,2)],['Ciclo ideal de referência TFF (s)',format(m.oeeIdealCycle,2)],['Disponibilidade assumida TFF',m.oeeAvailability===null?'—':format(m.oeeAvailability)+'%'],['Desempenho TFF',m.oeePerformance===null?'—':format(m.oeePerformance)+'%'],['Qualidade TFF',m.oeeQuality===null?'—':format(m.oeeQuality)+'%'],['OEE T. Funcional Final',m.oee===null?'—':format(m.oee)+'%'],['1 − COPQ',m.costScore===null?'—':format(m.costScore)+'%'],...['SPI','AOI','Teste funcional'].map(n=>['Retidas / reprovadas em '+n,m.rejects[n]||0])];$('metrics').innerHTML=metrics.map(([a,b])=>'<tr><td>'+a+'</td><td>'+b+'</td></tr>').join('');$('stations').innerHTML=names.map((name,i)=>{const a=s.state[i],status=a.busy?(DATA.capacities[i]>1?a.busies.length+'/'+DATA.capacities[i]+' posições':'Em operação'):'Livre';return '<tr><td>'+name+'</td><td class="'+(a.busy?'good':'')+'">'+status+'</td><td>'+a.queue.length+'</td><td>'+a.done+'</td><td>'+(DATA.complete?(now?100*a.busyTime/(now*DATA.capacities[i]):0).toFixed(1)+'%':'—')+'</td></tr>';}).join('');}
+$('play').onclick=()=>{if(now>=DATA.end)now=0;playing=!playing;$('play').textContent=playing?'Pausar':'Reproduzir';};$('reset').onclick=()=>{playing=false;now=0;$('play').textContent='Reproduzir';paint();};$('seek').oninput=e=>{now=+e.target.value;paint();};$('theme').onclick=()=>{document.documentElement.classList.toggle('light');paint();};window.addEventListener('resize',paint);
+function loop(t){if(playing){now=Math.min(DATA.end,now+Math.min((t-last)/1000,.1)*+$('speed').value);if(now>=DATA.end){playing=false;$('play').textContent='Reproduzir';}paint();}last=t;requestAnimationFrame(loop);}paint();requestAnimationFrame(loop);
+</script></body></html>

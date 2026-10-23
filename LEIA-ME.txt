@@ -1,0 +1,11 @@
+﻿PROJETO GEMEO DIGITAL DA LINHA DE CELULARES
+
+Abra "Abrir painel.cmd" para iniciar o painel com os dados existentes.
+O arquivo processo.sqlite3 guarda o historico copiado.
+Os arquivos .py, .html e .js contêm o simulador, coletor e interface.
+O README.md contém os comandos de simulacao e MQTT.
+A pasta .venv contém as dependencias e pode ser recriada por iniciar.ps1.
+Nenhuma nova simulacao e gerada ao abrir o painel.
+A pasta original do chat foi mantida como copia de seguranca.
+
+Para usar MQTT: abra o Docker Desktop, execute Iniciar broker.cmd e depois Abrir coletor.cmd. Para consultar os dados salvos, basta Abrir painel.cmd.

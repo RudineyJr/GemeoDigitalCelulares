@@ -1,0 +1,13 @@
+name: gemeo_celulares
+services:
+  mqtt:
+    image: eclipse-mosquitto:2
+    ports:
+      - "127.0.0.1:1883:1883"
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+
+      - mqtt_data:/mosquitto/data
+
+volumes:
+  mqtt_data:
