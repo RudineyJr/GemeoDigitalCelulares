@@ -14,8 +14,14 @@ function calculateFunctionalOEE(good,total,plannedSeconds,idealCycleSeconds) {
     oeeTheoreticalCount:validTime?plannedSeconds/idealCycleSeconds:null
   };
 }
+// OEE simplificado da linha: saída boa na embalagem e referência comum.
+// Retenções SPI/AOI não são NG; apenas reprovações finais entram na qualidade.
+function calculateLineOEE(good,finalNG,plannedSeconds,idealCycleSeconds=20) {
+  const result=calculateFunctionalOEE(good,good+finalNG,plannedSeconds,idealCycleSeconds);
+  return {...result,oee:plannedSeconds>0&&Number.isFinite(plannedSeconds)&&Number.isInteger(good)&&good>=0&&Number.isInteger(finalNG)&&finalNG>=0&&Number.isFinite(idealCycleSeconds)&&idealCycleSeconds>0?100*good*idealCycleSeconds/plannedSeconds:null};
+}
 // Cálculos puros, compartilhados pela interface e pelos testes.
-function buildMetrics(events, names, costs, functionalTestCycle=26) {
+function buildMetrics(events, names, costs, lineIdealCycle=20) {
   const inspections=names.filter(n=>['SPI','AOI','Teste funcional'].includes(n));
   const counts=Object.fromEntries(inspections.map(n=>[n,{total:0,passed:0,rejected:0}]));
   const latest=new Map(), starts=new Map();
@@ -51,11 +57,11 @@ function buildMetrics(events, names, costs, functionalTestCycle=26) {
     while(low<high){const mid=(low+high)>>1;if(series[mid].t<=t)low=mid+1;else high=mid;}
     const item=low?series[low-1]:{t:0,p:0,w:0,b:0,c:0,r:null,q:null,testGood:0,testTotal:0,testRejected:0,total:0,bad:0,lead:0,queueArea:0,queueMax:0,rejects:{}};
     const reference=item.total*costs.unit;
-    const oee=calculateFunctionalOEE(item.testGood,item.testTotal,t,functionalTestCycle);
+    const oee=calculateLineOEE(item.p,item.testRejected,t,lineIdealCycle);
     return {...item,...oee,queueMean:t?(item.queueArea+item.b*(t-item.t))/t:0,
       target:oee.oee, // Alias mantido para compatibilidade; interfaces usam oee explicitamente.
       costScore:reference>0?100*(1-item.c/reference):null};
   }
   return {series,at};
 }
-if(typeof module!=='undefined')module.exports={buildMetrics,calculateFunctionalOEE};
+if(typeof module!=='undefined')module.exports={buildMetrics,calculateFunctionalOEE,calculateLineOEE};

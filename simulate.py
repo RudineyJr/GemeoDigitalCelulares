@@ -6,11 +6,14 @@ import time
 import uuid
 import simpy
 from core import connect, save_many, summarize_events, make_manifest, confirm_run, STATIONS, PROCESS, CAPACITIES
+from lean_analysis import LEAN_TIMES, LEAN_FULL_TIMES
+from station_config import resolve_times
 
 
 def simulate(count=30, seed=7, defect_rate=0.02, emit=None, realtime=False,
              spi_enabled=True, aoi_enabled=True, spi_detection=0.95,
-             aoi_detection=0.95, placement_rate=None, reflow_rate=None, shift_hours=None):
+             aoi_detection=0.95, placement_rate=None, reflow_rate=None, shift_hours=None,
+             lean=False, lean_full=False, station_times=None, scenario_name=None):
     """Modela placas concorrentes, inspeções e forno com nove posições.
 
     defect_rate: defeitos de pasta; os demais tipos usam esta taxa quando omitidos.
@@ -28,6 +31,10 @@ def simulate(count=30, seed=7, defect_rate=0.02, emit=None, realtime=False,
         horizon = shift_hours * 3600
         count = math.ceil(horizon / 20)
     env = simpy.Environment()
+    lean = lean or lean_full
+    overrides = LEAN_FULL_TIMES if lean_full else LEAN_TIMES if lean else {}
+    times = resolve_times(station_times, overrides)
+    process = [(name, times[name]) for name, _ in PROCESS]
     rng = random.Random(seed)
     run = uuid.uuid4().hex
     resources = {name: simpy.Resource(env, capacity=CAPACITIES[name]) for name in STATIONS}
@@ -37,9 +44,16 @@ def simulate(count=30, seed=7, defect_rate=0.02, emit=None, realtime=False,
                   defeito_pasta=defect_rate, defeito_colocacao=placement_rate,
                   defeito_refusao=reflow_rate, deteccao_spi=spi_detection,
                   deteccao_aoi=aoi_detection, semente=seed,
-                  capacidades=CAPACITIES, tempos=dict(PROCESS), intervalo_chegada=20,
+                  capacidades=CAPACITIES, tempos=dict(process), intervalo_chegada=20,
+                  balanceamento_lean=lean,
+                  balanceamento_lean_completo=lean_full,
+                  ciclo_ideal_teste_funcional=dict(process)["Teste funcional"],
+                  cenario=("SPI/AOI + Lean ampliado" if lean_full else "SPI/AOI + Lean" if lean else "SPI/AOI" if spi_enabled and aoi_enabled else "Atual" if not spi_enabled and not aoi_enabled else "Inspeções parciais"),
                   intervalo_entrada_forno=20, destino_retidas="análise externa, sem retorno")
     events = []
+    if scenario_name:
+        config["cenario"] = str(scenario_name).strip()
+    config["tempos_personalizados"] = station_times is not None
 
     def record(piece, station, kind, result="pendente", reason=None):
         e = dict(id_evento=uuid.uuid4().hex, sequencia=len(events), execucao=run, id_peca=piece,
@@ -52,7 +66,7 @@ def simulate(count=30, seed=7, defect_rate=0.02, emit=None, realtime=False,
     def piece_flow(number, draws):
         piece = f"P{number:04d}"
         defects = []
-        for station, duration in PROCESS:
+        for station, duration in process:
             if station == "SPI" and not spi_enabled:
                 continue
             if station == "AOI" and not aoi_enabled:
@@ -133,6 +147,10 @@ def main():
     parser.add_argument("--deteccao-aoi", type=float, default=0.95)
     parser.add_argument("--defeitos-colocacao", type=float)
     parser.add_argument("--defeitos-refusao", type=float)
+    parser.add_argument("--lean", action="store_true", help="Hipótese: bateria, alto-falante e microfone com 19 s cada")
+    parser.add_argument("--lean-completo", action="store_true", help="Inclui balanceamento de câmeras, botões, tampa, teste e embalagem; hipótese didática")
+    parser.add_argument("--tempos", help="Arquivo JSON com nomes das estações e tempos em segundos; sobrepõe o perfil Lean")
+    parser.add_argument("--nome-cenario", help="Nome para identificar o balanceamento no painel")
     args = parser.parse_args()
     if args.pecas < 1 or not 0 <= args.defeitos <= 1:
         parser.error("Peças deve ser positivo e defeitos deve estar entre 0 e 1")
@@ -140,6 +158,14 @@ def main():
         from mqtt_transport import replay_archive
         replay_archive(args.reenviar, args.host)
         return
+    station_times = None
+    if args.tempos:
+        from pathlib import Path
+        try:
+            station_times = json.loads(Path(args.tempos).read_text(encoding="utf-8-sig"))
+            resolve_times(station_times)
+        except (OSError, ValueError) as exc:
+            parser.error(str(exc))
     from mqtt_transport import ReliablePublisher, archive_events
     publisher = ReliablePublisher(args.host, batch_size=1) if args.mqtt and args.tempo_real else None
     try:
@@ -148,7 +174,8 @@ def main():
                           spi_enabled=not args.sem_spi, aoi_enabled=not args.sem_aoi,
                           spi_detection=args.deteccao_spi, aoi_detection=args.deteccao_aoi,
                           placement_rate=args.defeitos_colocacao, reflow_rate=args.defeitos_refusao,
-                          shift_hours=args.turno_horas)
+                          shift_hours=args.turno_horas, lean=args.lean, lean_full=args.lean_completo,
+                          station_times=station_times, scenario_name=args.nome_cenario)
         manifest = make_manifest(events)
         if args.mqtt:
             if publisher is None:

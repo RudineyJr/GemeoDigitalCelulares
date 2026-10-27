@@ -1,8 +1,8 @@
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
 const e=(t,p,s,kind,r='pendente')=>({t,p,s,e:kind,r});
 const costs={SPI:15,AOI:60,'Teste funcional':240,unit:240};
-const a={events:[e(0,'P1','Teste funcional','entrada'),e(0,'P2','Teste funcional','fila'),e(1,'P1','Teste funcional','saida','aprovada'),e(1,'P1','Embalagem','entrada'),e(1,'P2','Teste funcional','entrada'),e(2,'P1','Embalagem','saida','aprovada'),e(2,'P2','Teste funcional','saida','reprovada')],stations:['Teste funcional','Embalagem'],complete:true,costs,functional_test_cycle:2,end:2};
-const b={events:[e(0,'P1','SPI','entrada'),e(0,'P2','SPI','fila'),e(1,'P1','SPI','saida','aprovada'),e(1,'P1','Teste funcional','entrada'),e(1,'P2','SPI','saida','reprovada'),e(2,'P1','Teste funcional','saida','aprovada'),e(2,'P1','Embalagem','saida','aprovada')],stations:['SPI','Teste funcional','Embalagem'],complete:true,costs,functional_test_cycle:2,end:2};
+const a={events:[e(0,'P1','Teste funcional','entrada'),e(0,'P2','Teste funcional','fila'),e(1,'P1','Teste funcional','saida','aprovada'),e(1,'P1','Embalagem','entrada'),e(1,'P2','Teste funcional','entrada'),e(2,'P1','Embalagem','saida','aprovada'),e(2,'P2','Teste funcional','saida','reprovada')],stations:['Teste funcional','Embalagem'],complete:true,costs,line_ideal_cycle:2,end:2};
+const b={events:[e(0,'P1','SPI','entrada'),e(0,'P2','SPI','fila'),e(1,'P1','SPI','saida','aprovada'),e(1,'P1','Teste funcional','entrada'),e(1,'P2','SPI','saida','reprovada'),e(2,'P1','Teste funcional','saida','aprovada'),e(2,'P1','Embalagem','saida','aprovada')],stations:['SPI','Teste funcional','Embalagem'],complete:true,costs,line_ideal_cycle:2,end:2};
 const elements=new Map(),ctx=new Proxy({},{get:()=>()=>{}});
 const document={getElementById(id){if(!elements.has(id))elements.set(id,{clientWidth:500,style:{},getContext:()=>ctx});return elements.get(id);},documentElement:{classList:{toggle(){}}}};
 const sandbox={document,window:{addEventListener(){}},getComputedStyle:()=>({getPropertyValue:()=>'#123456'}),devicePixelRatio:1,requestAnimationFrame(){}};

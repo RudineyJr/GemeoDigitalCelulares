@@ -1,5 +1,5 @@
 const assert=require('node:assert/strict');
-const {buildMetrics,calculateFunctionalOEE}=require('./metrics.js');
+const {buildMetrics,calculateFunctionalOEE,calculateLineOEE}=require('./metrics.js');
 const costs={SPI:15,AOI:60,'Teste funcional':240,unit:240};
 const names=['SPI','AOI','Teste funcional','Embalagem'];
 const event=(t,p,s,e,r='pendente')=>({t,p,s,e,r});
@@ -32,11 +32,11 @@ assert.equal(m.testGood,1);
 assert.equal(m.oeePerformance,100);
 assert.equal(m.oeeAvailability,100);
 assert.equal(m.oeeQuality,50);
-// OEE contabiliza a aprovação no teste antes de concluir a embalagem.
+// A aprovação no teste não é saída boa até terminar a embalagem.
 const beforePack=buildMetrics([event(0,'A','Teste funcional','entrada'),event(26,'A','Teste funcional','saida','aprovada'),event(26,'A','Embalagem','entrada')],['Teste funcional','Embalagem'],costs,26).at(26);
 assert.equal(beforePack.p,0);
 assert.equal(beforePack.testGood,1);
-assert.equal(beforePack.oee,100);
+assert.equal(beforePack.oee,0);
 assert.equal(calculateFunctionalOEE(0,0,60,26).oee,null);
 assert.equal(calculateFunctionalOEE(1,1,0,26).oee,null);
 assert.equal(calculateFunctionalOEE(1,1,60,0).oee,null);
@@ -46,3 +46,11 @@ for(const [total,good] of [[1050,987],[1049,1047]]){
  assert.ok(Math.abs(result.oee-good*26/28800*100)<1e-10);
 }
 console.log('OEE do TFF: contagens, ciclo, tempo programado, produto A/P/Q e independencia da embalagem OK');
+
+assert.equal(calculateLineOEE(986,63,28800,20).oee,986*20/28800*100);
+assert.equal(calculateLineOEE(1327,2,28800,20).oee,1327*20/28800*100);
+assert.equal(calculateLineOEE(1,0,100,20).oeeQuality,100);
+const retained=buildMetrics([event(0,'A','SPI','entrada'),event(1,'A','SPI','saida','reprovada'),event(1,'B','Teste funcional','entrada'),event(2,'B','Teste funcional','saida','aprovada'),event(3,'B','Embalagem','saida','aprovada')],names,costs,1).at(3);
+assert.equal(retained.oeeQuality,100);
+assert.equal(retained.testRejected,0);
+console.log('OEE linha: embalagem, referencia comum e exclusao de retencoes do NG OK');
